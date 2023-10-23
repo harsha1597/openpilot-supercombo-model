@@ -6,6 +6,7 @@ import pandas as pd
 
 from matplotlib import pyplot as plt
 
+
 X_IDXS = np.array([ 0. ,   0.1875,   0.75  ,   1.6875,   3.    ,   4.6875,
          6.75  ,   9.1875,  12.    ,  15.1875,  18.75  ,  22.6875,
         27.    ,  31.6875,  36.75  ,  42.1875,  48.    ,  54.1875,
@@ -16,7 +17,8 @@ X_IDXS = np.array([ 0. ,   0.1875,   0.75  ,   1.6875,   3.    ,   4.6875,
 def parse_image(frame):
 	H = (frame.shape[0]*2)//3
 	W = frame.shape[1]
-	parsed = np.zeros((6, H//2, W//2), dtype=np.uint8)
+	print(H,W)
+	parsed = np.zeros((6, H//2, W//2), dtype=np.float32)
 
 	parsed[0] = frame[0:H:2, 0::2]
 	parsed[1] = frame[1:H:2, 0::2]
@@ -38,13 +40,16 @@ def seperate_points_and_std_values(df):
 def main():
 	model = "supercombo.onnx"
 	
-	cap = cv2.VideoCapture('data/cropped_plats.mp4')
+	cap = cv2.VideoCapture('data/cropped_mini.mp4')
 	parsed_images = []
 
 	width = 512
 	height = 256
 	dim = (width, height)
 	
+	#Model Output IDs
+
+
 	plan_start_idx = 0
 	plan_end_idx = 4955
 	
@@ -83,6 +88,7 @@ def main():
 
 		ret, frame = cap.read()
 		if (ret == False):
+			print('Return False')
 			break
 
 		if frame is not None:
@@ -94,34 +100,54 @@ def main():
 			del parsed_images[0]
 	
 		parsed_images.append(parsed)
+		
 
 		if (len(parsed_images) >= 2):
+
+			print("Parsed Images: ", len(parsed_images))
 		
 			parsed_arr = np.array(parsed_images)
 			parsed_arr.resize((1,12,128,256))
 
-			data = json.dumps({'data': parsed_arr.tolist()})
-			data = np.array(json.loads(data)['data']).astype('float32')
 			
 			input_imgs = session.get_inputs()[0].name
-			desire = session.get_inputs()[1].name
-			initial_state = session.get_inputs()[2].name
+			big_input_imgs = session.get_inputs()[1].name
+			desire = session.get_inputs()[2].name
 			traffic_convention = session.get_inputs()[3].name
+			nav_features = session.get_inputs()[4].name
+			nav_instructions = session.get_inputs()[5].name
+			features_buffer = session.get_inputs()[6].name
+			
 			output_name = session.get_outputs()[0].name
+
+			data = json.dumps({'data': parsed_arr.tolist()})
+			data = np.array(json.loads(data)['data']).astype('float16')
 			
-			desire_data = np.array([0]).astype('float32')
-			desire_data.resize((1,8))
+
+			big_input_imgs_data = np.zeros((1,12,128,256),dtype=np.float16)
 			
-			traffic_convention_data = np.array([0]).astype('float32')
-			traffic_convention_data.resize((1,512))
+			desire_data = np.array([0]).astype('float16')
+			desire_data.resize((1,100,8))
 			
-			initial_state_data = np.array([0]).astype('float32')
+			traffic_convention_data = np.array([0]).astype('float16')
+			traffic_convention_data.resize((1,2))
+			
+			initial_state_data = np.array([0]).astype('float16')
 			initial_state_data.resize((1,2))
 
+			nav_features_data = np.zeros((1,256),dtype=np.float16)
+
+			nav_instructions_data = np.zeros((1,150),dtype=np.float16)
+
+			features_buffer_data = np.zeros((1,99,512),dtype=np.float16)
+
 			result = session.run([output_name], {input_imgs: data,
+												big_input_imgs :big_input_imgs_data,
 												desire: desire_data,
 												traffic_convention: traffic_convention_data,
-												initial_state: initial_state_data
+												nav_features: nav_features_data,
+												nav_instructions : nav_instructions_data,
+												features_buffer : features_buffer_data
 												})
 
 			res = np.array(result)
